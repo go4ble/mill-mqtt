@@ -47,7 +47,7 @@ object App extends scala.App {
             // unrecognized device
             // add to list of known devices, publish discovery payload, and subscribe to commands
             val discoveryPayloadMessage =
-              new MqttMessage(Json.toBytes(Json.toJson(discoveryPayload(device, payload))), 2, true, null)
+              new MqttMessage(Json.toBytes(Json.toJson(discoveryPayload(payload)(device))), 2, true, null)
             mqtt ! MqttBehavior.Publish(discoveryTopic(device), discoveryPayloadMessage)
             mqtt ! MqttBehavior.Subscribe(new MqttSubscription(commandTopic(device, "+"), 2))
             readyForMessages(millApi, mqtt, knownDevices + device)
@@ -70,7 +70,7 @@ object App extends scala.App {
       s"${BuildInfo.name}/${device.device_id}/$entity/set"
     private val CommandTopicRegex = commandTopic(SessionInitDevice("(?<deviceId>[^/]+)", None), "(?<entity>[^/]+)").r
 
-    private def discoveryPayload(device: SessionInitDevice, payload: JsObject): DiscoveryPayload = {
+    private def discoveryPayload(payload: JsObject)(implicit device: SessionInitDevice): DiscoveryPayload = {
       DiscoveryPayload(
         device = DiscoveryPayload.Device(
           identifiers = device.device_id,
@@ -81,98 +81,73 @@ object App extends scala.App {
           hwVersion = (payload \ "oscarVersion").as[BigDecimal].toString()
         ),
         origin = DiscoveryPayload.Origin(),
-        components = Map(
-          "lid_locked" -> DiscoveryPayload.Component(
-            platform = "binary_sensor",
-            name = "Lid Locked",
-            valueTemplate = "{{ value_json.lidLockState and 'OFF' or 'ON' }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_lid_locked",
-            deviceClass = Some("lock")
+        components = Seq(
+          DiscoveryPayload.Component.binarySensor(
+            field = "lidLockState",
+            invertSensor = true,
+            deviceClass = Some("lock"),
+            name = Some("Lid Locked")
           ),
-          "lid_open" -> DiscoveryPayload.Component(
-            platform = "binary_sensor",
-            name = "Lid Open",
-            valueTemplate = "{{ value_json.lidOpenState and 'ON' or 'OFF' }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_lid_open",
-            deviceClass = Some("door")
+          DiscoveryPayload.Component.binarySensor(
+            field = "lidOpenState",
+            deviceClass = Some("door"),
+            name = Some("Lid Open")
           ),
-          "bucket_missing" -> DiscoveryPayload.Component(
-            platform = "binary_sensor",
-            name = "Bucket Missing",
-            valueTemplate = "{{ value_json.bucketMissing and 'ON' or 'OFF' }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_bucket_missing",
+          DiscoveryPayload.Component.binarySensor(
+            field = "bucketMissing",
             deviceClass = Some("problem")
           ),
-          "child_lock" -> DiscoveryPayload.Component(
-            platform = "binary_sensor",
-            name = "Child Lock",
-            valueTemplate = "{{ value_json.childLockEnabled and 'OFF' or 'ON' }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_child_lock",
-            deviceClass = Some("lock")
+          DiscoveryPayload.Component.binarySensor(
+            field = "childLockEnabled",
+            invertSensor = true,
+            deviceClass = Some("lock"),
+            name = Some("Child Lock")
           ),
-          "online" -> DiscoveryPayload.Component(
-            platform = "binary_sensor",
-            name = "Online",
-            valueTemplate = "{{ value_json.online and 'ON' or 'OFF' }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_online",
+          DiscoveryPayload.Component.binarySensor(
+            field = "online",
             deviceClass = Some("connectivity")
           ),
-          "mass_in_bucket" -> DiscoveryPayload.Component(
-            platform = "sensor",
-            name = "Mass in Bucket",
-            valueTemplate = "{{ value_json.massInBucket }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_mass_in_bucket",
+          DiscoveryPayload.Component.sensor(
+            field = "massInBucket",
             deviceClass = Some("weight"),
             unitOfMeasurement = Some("lb"),
             suggestedDisplayPrecision = Some(2)
           ),
-          "mass_added_since_bucket_empty" -> DiscoveryPayload.Component(
-            platform = "sensor",
-            name = "Mass Added Since Bucket Empty",
-            valueTemplate = "{{ value_json.massAddedSinceBucketEmpty }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_mass_added_since_bucket_empty",
+          DiscoveryPayload.Component.sensor(
+            field = "massAddedSinceBucketEmpty",
             deviceClass = Some("weight"),
-            unitOfMeasurement = Some("lb"),
             icon = Some("mdi:pail-plus"),
+            unitOfMeasurement = Some("lb"),
             suggestedDisplayPrecision = Some(2)
           ),
-          "unprocessed_mass" -> DiscoveryPayload.Component(
-            platform = "sensor",
-            name = "Unprocessed Mass",
-            valueTemplate = "{{ value_json.unprocessedMass }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_unprocessed_mass",
+          DiscoveryPayload.Component.sensor(
+            field = "unprocessedMass",
             deviceClass = Some("weight"),
             unitOfMeasurement = Some("lb"),
             suggestedDisplayPrecision = Some(2)
           ),
-          "bucket_fullness" -> DiscoveryPayload.Component(
-            platform = "sensor",
-            name = "Bucket Fullness",
-            valueTemplate = "{{ value_json.bucketFullness }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_bucket_fullness",
+          DiscoveryPayload.Component.sensor(
+            field = "bucketFullness",
             icon = Some("mdi:delete-variant")
           ),
-          "next_cycle_start_time" -> DiscoveryPayload.Component(
-            platform = "sensor",
-            name = "Next Cycle Start Time",
-            valueTemplate = "{{ value_json.nextDgoCycleStartTime }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_next_cycle_start_time",
-            deviceClass = Some("timestamp")
+          DiscoveryPayload.Component.sensor(
+            field = "nextDgoCycleStartTime",
+            deviceClass = Some("timestamp"),
+            name = Some("Next Cycle Start Time")
           ),
-          "next_cycle_duration" -> DiscoveryPayload.Component(
-            platform = "sensor",
-            name = "Next Cycle Duration",
-            valueTemplate = "{{ value_json.nextDgoCycleDuration }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_next_cycle_duration",
+          DiscoveryPayload.Component.sensor(
+            field = "nextDgoCycleDuration",
             deviceClass = Some("duration"),
+            name = Some("Next Cycle Duration"),
             unitOfMeasurement = Some("s")
           ),
-          "dry_and_grind" -> DiscoveryPayload.Component(
+          DiscoveryPayload.Component(
+            field = "dgoCycle",
             platform = "switch",
             name = "Dry and Grind",
             valueTemplate =
               "{{ ((value_json.dgoCycle.desired or value_json.dgoCycle.reported) == 'DryGrind') and 'ON' or 'OFF' }}",
-            uniqueId = s"${BuildInfo.name}_${device.device_id}_dry_and_grind",
+            uniqueId = DiscoveryPayload.Component.deriveUniqueIdFromField("dgoCycle"),
             deviceClass = Some("switch"),
             commandTopic = Some(commandTopic(device, "dgoCycle"))
           )
