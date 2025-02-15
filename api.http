@@ -1,0 +1,32 @@
+### Auth
+POST https://api.mill.com/app/v1/tokens
+Content-Type: application/json
+
+{
+  "email": "",
+  "password": ""
+}
+
+### Load devices
+GET https://cloud.api.mill.com/v1/session_init?refresh_token=true
+Authorization: Bearer eyJ...vPA
+
+### Set cycle
+# Idle/DryGrind
+POST https://cloud.api.mill.com/v1/device_settings/MGM...557
+Authorization: Bearer eyJ...vPA
+
+{
+  "settings": {
+    "dgoCycle": "Idle"
+  }
+}
+
+### WS
+WEBSOCKET wss://websocket.cloud.api.mill.com/
+Host: websocket.cloud.api.mill.com
+Origin: https://websocket.cloud.api.mill.com
+Connection: upgrade
+Upgrade: websocket
+Authorization: eyJ...vPA
+deviceId: MGM...557
