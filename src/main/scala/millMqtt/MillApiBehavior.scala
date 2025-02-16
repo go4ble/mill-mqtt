@@ -10,7 +10,7 @@ import sttp.ws.WebSocket
 
 import scala.annotation.unused
 import scala.concurrent.Future
-import scala.util.{Success, Try}
+import scala.util.{Failure, Success, Try}
 
 object MillApiBehavior {
   sealed trait Message
@@ -99,11 +99,21 @@ object MillApiBehavior {
   private def ready(replyTo: ActorRef[(SessionInitDevice, Device)], authToken: String): Behavior[Message] =
     Behaviors.receive {
       case (context, WebSocketPayload(device, ws, payloadOpt)) =>
-        payloadOpt.foreach { payload =>
-          val devicePayload = Json.parse(payload).as[Device]
-          replyTo ! (device, devicePayload)
+        payloadOpt match {
+          case Some(payload) =>
+            context.log.info("received payload for device: {}", device.device_id)
+            val devicePayload = Json.parse(payload).as[Device]
+            replyTo ! (device, devicePayload)
+          case _ =>
+            context.log.info("websocket connected for device: {}", device.device_id)
         }
-        context.pipeToSelf(ws.receiveText())(p => WebSocketPayload(device, ws, p.toOption))
+        context.pipeToSelf(ws.receiveText()) {
+          case Success(p) =>
+            WebSocketPayload(device, ws, Some(p))
+          case Failure(exception) =>
+            context.log.error("error with websocket connection", exception)
+            throw exception
+        }
         Behaviors.same
 
       case (context, SetCycle(device, cycle)) =>

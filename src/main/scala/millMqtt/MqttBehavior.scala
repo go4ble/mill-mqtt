@@ -23,13 +23,15 @@ object MqttBehavior {
       new persist.MemoryPersistence
     )
     mqttClient.connect(
-      null,
+      null, // userContext
       new MqttActionListener {
         override def onSuccess(asyncActionToken: IMqttToken): Unit =
           context.self ! Connected
 
-        override def onFailure(asyncActionToken: IMqttToken, exception: Throwable): Unit =
+        override def onFailure(asyncActionToken: IMqttToken, exception: Throwable): Unit = {
           context.log.error("failed to connect", exception)
+          throw exception
+        }
       }
     )
     waitingForConnection(replyTo, mqttClient)
@@ -52,6 +54,7 @@ object MqttBehavior {
   private def connected(replyTo: ActorRef[MqttMessageEvent], mqttClient: MqttAsyncClient): Behavior[Message] =
     Behaviors.setup { context =>
       require(mqttClient.isConnected)
+      context.log.info("successfully connected to mqtt broker")
       mqttClient.setCallback(new MqttCallback {
         override def disconnected(disconnectResponse: MqttDisconnectResponse): Unit = {
           context.log.error("disconnected", disconnectResponse.getException)

@@ -7,5 +7,5 @@ object Config {
   val MillPassword: String = env("MILL_PASSWORD")
 
   val MqttBroker: String = env.getOrElse("MQTT_BROKER", "tcp://localhost:1883")
-  val MqttDeviceDiscoveryTopicPrefix = env.getOrElse("MQTT_DEVICE_DISCOVERY_TOPIC_PREFIX", "homeassistant")
+  val MqttDeviceDiscoveryTopicPrefix: String = env.getOrElse("MQTT_DEVICE_DISCOVERY_TOPIC_PREFIX", "homeassistant")
 }
