@@ -110,20 +110,20 @@ object App extends scala.App {
           DiscoveryPayload.Component.sensor(
             field = "massInBucket",
             deviceClass = Some("weight"),
-            unitOfMeasurement = Some("lb"),
+            unitOfMeasurement = Some("kg"),
             suggestedDisplayPrecision = Some(2)
           ),
           DiscoveryPayload.Component.sensor(
             field = "massAddedSinceBucketEmpty",
             deviceClass = Some("weight"),
             icon = Some("mdi:pail-plus"),
-            unitOfMeasurement = Some("lb"),
+            unitOfMeasurement = Some("kg"),
             suggestedDisplayPrecision = Some(2)
           ),
           DiscoveryPayload.Component.sensor(
             field = "unprocessedMass",
             deviceClass = Some("weight"),
-            unitOfMeasurement = Some("lb"),
+            unitOfMeasurement = Some("kg"),
             suggestedDisplayPrecision = Some(2)
           ),
           DiscoveryPayload.Component.sensor(
