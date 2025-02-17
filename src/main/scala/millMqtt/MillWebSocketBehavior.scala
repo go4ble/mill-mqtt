@@ -15,6 +15,7 @@ object MillWebSocketBehavior {
   case object Terminate extends Message
   private case class WebSocketConnected(webSocket: WebSocket[Future]) extends Message
   private case class WebSocketPayload(payload: String) extends Message
+  private case class WebSocketError(error: Throwable) extends Message
 
   def apply(
       replyTo: ActorRef[(SessionInitDevice, JsObject)],
@@ -33,17 +34,18 @@ object MillWebSocketBehavior {
       .response(asWebSocketAlwaysUnsafe[Future])
       .send(pekkohttp.PekkoHttpBackend())
     context.pipeToSelf(ws)(result => WebSocketConnected(result.get.body))
-    waitingForWebSocket(replyTo, device)
+    waitingForWebSocket(replyTo, device, authToken)
   }
 
   private def waitingForWebSocket(
       replyTo: ActorRef[(SessionInitDevice, JsObject)],
-      device: SessionInitDevice
+      device: SessionInitDevice,
+      authToken: String
   ): Behavior[Message] = Behaviors.receive {
     case (context, WebSocketConnected(webSocket)) =>
       context.log.info("websocket connected for device: {}", device.device_id)
       context.pipeToSelf(webSocket.receiveText())(_.map(WebSocketPayload(_)).get)
-      ready(replyTo, device, webSocket)
+      ready(replyTo, device, webSocket, authToken)
     case (_, unexpectedMessage) =>
       throw new Exception(s"unexpected message: $unexpectedMessage")
   }
@@ -51,17 +53,23 @@ object MillWebSocketBehavior {
   private def ready(
       replyTo: ActorRef[(SessionInitDevice, JsObject)],
       device: SessionInitDevice,
-      webSocket: WebSocket[Future]
+      webSocket: WebSocket[Future],
+      authToken: String
   ): Behavior[Message] = Behaviors.receive {
     case (context, WebSocketPayload(payload)) =>
       val devicePayload = Json.parse(payload).as[JsObject]
       replyTo ! (device, devicePayload)
-      context.pipeToSelf(webSocket.receiveText())(_.map(WebSocketPayload(_)).get)
+      context.pipeToSelf(webSocket.receiveText())(_.fold(WebSocketError(_), WebSocketPayload(_)))
       Behaviors.same
 
     case (_, Terminate) =>
       webSocket.close()
       Behaviors.stopped
+
+    case (context, WebSocketError(error)) =>
+      context.log.warn("failed to receive websocket message, reconnecting", error)
+      webSocket.close()
+      apply(replyTo, device, authToken)
 
     case (_, unexpectedMessage) =>
       throw new Exception(s"unexpected message: $unexpectedMessage")

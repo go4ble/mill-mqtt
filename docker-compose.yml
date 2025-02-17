@@ -12,3 +12,9 @@ services:
     #   - ./hass-config/:/config
     ports:
       - "8123:8123"
+
+  app:
+    image: ghcr.io/go4ble/mill-mqtt:0.2.0
+    environment:
+      MILL_EMAIL: ''
+      MILL_PASSWORD: ''

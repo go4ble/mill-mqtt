@@ -2,7 +2,7 @@ import Dependencies.*
 import com.typesafe.sbt.packager.docker.ExecCmd
 
 ThisBuild / scalaVersion := "2.13.15"
-ThisBuild / version := "0.2.0-SNAPSHOT"
+ThisBuild / version := "0.2.0"
 ThisBuild / organization := "com.example"
 ThisBuild / organizationName := "example"
 ThisBuild / homepage := Some(url("https://github.com/go4ble/mill-mqtt"))
