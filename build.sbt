@@ -2,7 +2,7 @@ import Dependencies.*
 import com.typesafe.sbt.packager.docker.ExecCmd
 
 ThisBuild / scalaVersion := "2.13.15"
-ThisBuild / version := "0.1.0"
+ThisBuild / version := "0.2.0-SNAPSHOT"
 ThisBuild / organization := "com.example"
 ThisBuild / organizationName := "example"
 ThisBuild / homepage := Some(url("https://github.com/go4ble/mill-mqtt"))
@@ -18,7 +18,8 @@ lazy val root = (project in file("."))
       "com.softwaremill.sttp.client3" %% "pekko-http-backend" % "3.10.3",
       "com.softwaremill.sttp.client3" %% "play-json" % "3.10.3",
       "org.eclipse.paho" % "org.eclipse.paho.mqttv5.client" % "1.2.5",
-      "ch.qos.logback" % "logback-classic" % "1.5.16"
+      "ch.qos.logback" % "logback-classic" % "1.5.16",
+      "com.auth0" % "java-jwt" % "4.5.0"
     ),
     libraryDependencies += munit % Test,
     //

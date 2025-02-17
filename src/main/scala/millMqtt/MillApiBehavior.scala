@@ -1,16 +1,16 @@
 package millMqtt
 
+import com.auth0.jwt.JWT
 import org.apache.pekko.actor.typed.scaladsl.Behaviors
 import org.apache.pekko.actor.typed.{ActorRef, Behavior}
 import play.api.libs.json.{JsObject, Json, OWrites, Reads}
 import sttp.client3._
 import sttp.client3.playJson._
-import sttp.model.HeaderNames
-import sttp.ws.WebSocket
 
+import java.time.Instant
 import scala.annotation.unused
-import scala.concurrent.Future
-import scala.util.{Failure, Success, Try}
+import scala.concurrent.duration._
+import scala.util.{Success, Try}
 
 object MillApiBehavior {
   sealed trait Message
@@ -18,14 +18,10 @@ object MillApiBehavior {
   private implicit val authResponseReads: Reads[AuthResponse] = Json.reads
   final case class SessionInitDevice(device_id: String, nickname: Option[String])
   @unused private implicit val sessionInitDeviceReads: Reads[SessionInitDevice] = Json.reads
-  private final case class SessionInitResponse(devices: Seq[SessionInitDevice]) extends Message
+  private final case class SessionInitResponse(devices: Seq[SessionInitDevice], authToken: String) extends Message
   private implicit val sessionInitResponseReads: Reads[SessionInitResponse] = Json.reads
-  private final case class WebSocketPayload(
-      device: SessionInitDevice,
-      webSocket: WebSocket[Future],
-      payload: Option[String] = None
-  ) extends Message
   private final case class ApiResponse(device: SessionInitDevice, payload: Try[Response[JsObject]]) extends Message
+  private final case object RefreshDevices extends Message
 
   final case class SetCycle(device: SessionInitDevice, cycle: String) extends Message
 
@@ -62,7 +58,7 @@ object MillApiBehavior {
           .response(playJson.asJson[SessionInitResponse].getRight)
           .send(sttpBackend)
         context.pipeToSelf(sessionInitResponse)(_.get.body)
-        waitingForDevices(replyTo, authToken, pendingMessages)
+        waitingForDevices(replyTo, pendingMessages)
       case (_, message) =>
         waitingForAuthResponse(replyTo, pendingMessages :+ message)
     }
@@ -70,52 +66,29 @@ object MillApiBehavior {
 
   private def waitingForDevices(
       replyTo: ActorRef[(SessionInitDevice, Device)],
-      authToken: String,
       pendingMessages: Seq[Message]
-  ): Behavior[Message] = Behaviors.receive {
-    case (context, SessionInitResponse(devices)) =>
-      devices.foreach { device =>
-        context.log.info(s"opening websocket connection for device: ${device.device_id}")
-        val ws = basicRequest
-          .get(uri"wss://websocket.cloud.api.mill.com/")
-          .headers(
-            Map(
-              HeaderNames.Authorization -> authToken,
-              "deviceId" -> device.device_id
-            )
-          )
-          .response(asWebSocketAlwaysUnsafe[Future])
-          .send(sttpBackend)
-        context.pipeToSelf(ws)(result => WebSocketPayload(device, result.get.body))
-      }
-      pendingMessages.foreach(context.self.tell)
-      ready(replyTo, authToken)
+  ): Behavior[Message] = Behaviors.withTimers { scheduler =>
+    Behaviors.receive {
+      case (context, SessionInitResponse(devices, authToken)) =>
+        val decodedToken = JWT.decode(authToken)
+        val expiresAt = decodedToken.getExpiresAtAsInstant.getEpochSecond
+        val expiresIn = expiresAt - Instant.now().getEpochSecond
+        scheduler.startSingleTimer(RefreshDevices, (expiresIn * 9 / 10).seconds)
+        devices.foreach { device =>
+          val webSocketActor =
+            context.spawn(MillWebSocketBehavior(replyTo, device, authToken), s"ws-${device.device_id}")
+          context.watch(webSocketActor)
+        }
+        pendingMessages.foreach(context.self.tell)
+        ready(replyTo, authToken)
 
-    case (_, message) =>
-      waitingForDevices(replyTo, authToken, pendingMessages :+ message)
+      case (_, message) =>
+        waitingForDevices(replyTo, pendingMessages :+ message)
+    }
   }
 
-  // TODO automatically refresh auth token
   private def ready(replyTo: ActorRef[(SessionInitDevice, Device)], authToken: String): Behavior[Message] =
     Behaviors.receive {
-      case (context, WebSocketPayload(device, ws, payloadOpt)) =>
-        payloadOpt match {
-          case Some(payload) =>
-            context.log.info("received payload for device: {}", device.device_id)
-            val devicePayload = Json.parse(payload).as[Device]
-            replyTo ! (device, devicePayload)
-          case _ =>
-            context.log.info("websocket connected for device: {}", device.device_id)
-        }
-        context.pipeToSelf(ws.receiveText()) {
-          case Success(p) =>
-            WebSocketPayload(device, ws, Some(p))
-          case Failure(exception) =>
-            context.log.error("error with websocket connection", exception)
-            throw exception
-        }
-        Behaviors.same
-
       case (context, SetCycle(device, cycle)) =>
         val setCycleResponse = basicRequest
           .post(uri"https://cloud.api.mill.com/v1/device_settings/${device.device_id}")
@@ -131,11 +104,16 @@ object MillApiBehavior {
         replyTo ! (device, response.body)
         Behaviors.same
 
+      case (context, RefreshDevices) =>
+        context.children.foreach(context.unwatch)
+        context.children.foreach(_.unsafeUpcast[MillWebSocketBehavior.Message] ! MillWebSocketBehavior.Terminate)
+        context.self ! AuthResponse(authToken)
+        waitingForAuthResponse(replyTo)
+
       case (_, unexpectedMessage) =>
         throw new Exception(s"unexpected message: $unexpectedMessage")
     }
 
   private case class AuthRequest(email: String, password: String)
   private implicit val authRequestWrites: OWrites[AuthRequest] = Json.writes
-
 }
